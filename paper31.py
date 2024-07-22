@@ -1,0 +1,568 @@
+import speech_recognition as sr
+import tkinter as tk
+from tkinter import filedialog, messagebox, simpledialog
+from docx import Document
+from docx.shared import Pt
+from docx.shared import Inches
+from docx.shared import Cm
+from docx.shared import RGBColor
+import win32print
+import win32ui
+import os
+import threading
+import time
+import subprocess
+
+class SpeechToTextApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Exam Paper Creater")
+        self.root.geometry("800x630")
+        self.root.resizable(False, False)
+        self.recognizer = sr.Recognizer()
+        self.microphone = sr.Microphone()
+        
+        self.counter4ques = 1  # Initialize counter for numbering
+        self.counter4opt = 0  # Initialize counter for numbering   
+        self.counter4list = 1  # Initialize counter for numbering            
+        
+        #for predefine text
+        self.counter = 1  # Initialize counter for numbering           
+        self.counter2 = 1  # Initialize counter for numbering        
+
+
+        self.hindi_numbers = ['(क)', '(ख)', '(ग)', '(घ)', '(ङ)', '(च)', '(छ)', '(ज)', '(झ)', '(ञ)', '(ट)', '(ठ)', '(ड)', '(ढ)', '(ण)', '(त)', '(थ)', '(द)', '(ध)', '(न)', '(प)', '(फ)', '(ब)', '(भ)', '(म)', '(य)', '(र)', '(ल)', '(व)', '(श)', '(ष)', '(स)', '(ह)', '(अ)', '(आ)', '(इ)', '(ई)', '(उ)', '(ऊ)', '(ऋ)', '(ए)', '(ऐ)', '(ओ)', '(औ)', '(अं)', '(अः)', '(क्ष)', '(त्र)', '(ज्ञ)']  # Hindi numbers
+        self.roman_numbers = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX','XX']  # Hindi numbers
+        self.MCQ_numbers = ['  (i)','(ii)','(iii)','(iv)']
+        self.roman2_numbers = ['  (i)','(ii)','(iii)','(iv)', '(v)', '(vi)']
+
+        
+        self.selected_punctuation = "?"  # Default punctuation
+        self.recording = False  # Flag to indicate recording status
+
+        
+        self.another_predefined_texts = {
+            "Short Type": "This is the text for Example first.",
+            "Long Type": "This is the text for Example second.",
+            "Multiple Choice": "This is the text for Example third."
+        }        
+        
+        self.predefined_texts = {
+            "Yearly exam": "समय - 						        वार्षिक परीक्षा",
+            "Half Yearly exam": "समय - 						        अर्ध-वार्षिक परीक्षा",
+            "The note": "                                                                                   नोट – सभी प्रश्न अनिवार्य है –"
+        }
+        
+        self.my_predefined_texts = {
+            "Class-1": {
+                "Hindi": "                                                                                     कक्षा – 1 विषय – हिन्दी",
+                "Social": "                                                                                     कक्षा – 1 विषय – सामाजिक",
+                "Science": "                                                                                     कक्षा – 1 विषय – विज्ञान"
+            },
+            "Class-2": {
+                "Hindi": "                                                                                     कक्षा – 2 विषय – हिन्दी",
+                "Social": "                                                                                     कक्षा – 2 विषय – सामाजिक",
+                "Science": "                                                                                     कक्षा – 2 विषय – विज्ञान"
+            },
+            "Class-3": {
+                "Hindi": "                                                                                     कक्षा – 3 विषय – हिन्दी",
+                "Social": "                                                                                     कक्षा – 3 विषय – सामाजिक",
+                "Science": "                                                                                     कक्षा – 3 विषय – विज्ञान"
+            }
+        } 
+        
+        
+        # Load your custom icon
+        icon_path = "examPaper.ico"  
+        root.iconbitmap(icon_path)
+ 
+        self.create_widgets()
+        self.preview_window = None
+        self.recordings = []
+
+    def create_widgets(self):
+        # =======Menu========
+        menu = tk.Menu(self.root)
+        self.root.config(menu=menu)
+        
+        # file menu
+        file_menu = tk.Menu(menu, tearoff=0)
+        file_menu.add_command(label="Save", command=self.save_text)
+        menu.add_cascade(label="File", menu=file_menu)
+        
+        
+        #Exam title
+        text_menu2 = tk.Menu(menu, tearoff=0)
+        for label in self.predefined_texts:
+            text_menu2.add_command(label=label, command=lambda txt=self.predefined_texts[label]: self.insert_predefined_text2(txt))
+        menu.add_cascade(label="ExamTitle", menu=text_menu2)   
+
+        # "Class" submenu
+        many_text_submenu = tk.Menu(menu, tearoff=0)
+        for name, texts in self.my_predefined_texts.items():
+            submenu = tk.Menu(many_text_submenu, tearoff=0)
+            for label, text in texts.items():
+                submenu.add_command(label=label, command=lambda txt=text: self.insert_predefined_text2(txt))
+            many_text_submenu.add_cascade(label=name, menu=submenu)
+        menu.add_cascade(label="Class", menu=many_text_submenu)
+
+        
+        #Questions type
+        another_predefined_submenu = tk.Menu(menu, tearoff=0)
+        for label, text in self.another_predefined_texts.items():
+            another_predefined_submenu.add_command(label=label, command=lambda txt=text: self.insert_predefined_text3(txt))
+        menu.add_cascade(label="Questions", menu=another_predefined_submenu)   
+
+
+        #My text
+        text_menu = tk.Menu(menu, tearoff=0)
+        text_menu.add_command(label="Text 1", command=lambda: self.insert_predefined_text("text1.txt"))
+        text_menu.add_command(label="Text 2", command=lambda: self.insert_predefined_text("text2.txt"))
+        text_menu.add_command(label="Text 3", command=lambda: self.insert_predefined_text("text3.txt"))
+        menu.add_cascade(label="MyText", menu=text_menu)
+        
+    
+        
+
+        # =========Toolbar==============
+        toolbar = tk.Frame(self.root, bg="#f0f0f0")
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+
+        self.recording_button = tk.Button(toolbar, text="Insert Questions", command=self.start_recording, state="normal")
+        self.recording_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.recording_button.configure(background='#f5e1bf')          
+        remove_last_button = tk.Button(toolbar, text=" X ", command=self.remove_ques) #for question
+        remove_last_button.pack(side=tk.LEFT, padx=5, pady=5)
+        remove_last_button.configure(background='#f5e1bf')  
+        
+        
+        self.recording_button2 = tk.Button(toolbar, text="Insert Options", command=self.start_recording2, state="normal")
+        self.recording_button2.pack(side=tk.LEFT, padx=5, pady=5)       
+        self.recording_button2.configure(background='#c4d2ff')         
+        self.decrease_button = tk.Button(toolbar, text=" X ", command=self.remove_mcq) #for mcqs
+        self.decrease_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.decrease_button.configure(background='#c4d2ff')  
+
+        self.recording_button3 = tk.Button(toolbar, text="Insert Sentence", command=self.start_recording3, state="normal")
+        self.recording_button3.pack(side=tk.LEFT, padx=5, pady=5)  
+        self.recording_button3.configure(background='#f5bcde')          
+        self.rem_sen_button = tk.Button(toolbar, text=" X ", command=self.remove_sentence) #for mcqs
+        self.rem_sen_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.rem_sen_button.configure(background='#f5bcde')        
+        
+        self.recording_button4 = tk.Button(toolbar, text="Insert List", command=self.start_recording4, state="normal")
+        self.recording_button4.pack(side=tk.LEFT, padx=5, pady=5)  
+        self.recording_button4.configure(background='#bbdef2')          
+        self.rem_list_button = tk.Button(toolbar, text=" X ", command=self.remove_list) #for mcqs
+        self.rem_list_button.pack(side=tk.LEFT, padx=5, pady=5)
+        self.rem_list_button.configure(background='#bbdef2')             
+        
+        # -----------RIGHT-------------     
+
+ 
+        self.status_label = tk.Label(toolbar, text="Ready", fg="green")
+        self.status_label.pack(side=tk.RIGHT, padx=5, pady=5)
+
+ 
+
+        # ==================================
+
+        # Text box
+        self.text_box = tk.Text(self.root, font=("Arial", 14), wrap="word")
+        self.text_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+
+
+    def start_recording(self):
+        if not self.recording:
+            self.recording = True
+            self.recording_button.config(text="Stop Inserting")
+            self.status_label.config(text="Listening...", fg="red")
+            threading.Thread(target=self._recording_thread).start()
+        else:
+            self.recording = False
+            self.recording_button.config(text="Insert Questions")
+            self.status_label.config(text="Ready", fg="green")
+            
+    def start_recording2(self):
+        if not self.recording:
+            self.recording = True
+            self.recording_button2.config(text="Stop Inserting")
+            self.status_label.config(text="Listening...", fg="red")
+            threading.Thread(target=self._recording_thread2).start()
+        else:
+            self.recording = False
+            self.recording_button2.config(text="Insert Options")
+            self.status_label.config(text="Ready", fg="green")            
+ 
+    def start_recording3(self):
+        if not self.recording:
+            self.recording = True
+            self.recording_button3.config(text="Stop Inserting")
+            self.status_label.config(text="Listening...", fg="red")
+            threading.Thread(target=self._recording_thread3).start()
+        else:
+            self.recording = False
+            self.recording_button3.config(text="Insert Sentence")
+            self.status_label.config(text="Ready", fg="green")   
+
+    def start_recording4(self):
+        if not self.recording:
+            self.recording = True
+            self.recording_button4.config(text="Stop Inserting")
+            self.status_label.config(text="Listening...", fg="red")
+            threading.Thread(target=self._recording_thread4).start()
+        else:
+            self.recording = False
+            self.recording_button4.config(text="Insert List")
+            self.status_label.config(text="Ready", fg="green")    
+
+    def _recording_thread(self):
+        with self.microphone as source:
+            print("Speak in Hindi:")
+            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            audio = self.recognizer.listen(source)
+
+        try:
+            text = self.recognizer.recognize_google(audio, language="hi-IN")
+            print("You said:", text)
+
+            # Append counter to the recognized text
+            numbered_text = f"{self.hindi_numbers[self.counter4ques - 1]}. {text}{self.selected_punctuation}"  # Append selected punctuation
+            self.counter4ques += 1  # Increment counter
+
+            # Insert voice-recognized text without bold formatting
+            self.text_box.insert(tk.END, numbered_text + "\n")
+            self.recordings.append(numbered_text)  # Save for batch saving
+        except sr.UnknownValueError:
+            print("Google Speech Recognition could not understand audio")
+        except sr.RequestError as e:
+            print("Could not request results from Google Speech Recognition service; {0}".format(e))
+            messagebox.showinfo("Error", "Please connect your device to Internet!")
+        except Exception as e:
+            print("Error:", e)
+        finally:
+            self.recording = False
+            self.recording_button.config(text="Insert Questions")
+            self.status_label.config(text="Ready", fg="green")
+
+    def _recording_thread2(self):
+        print("Counter4opt value at the start:", self.counter4opt)  # Display initial counter4opt value
+        with self.microphone as source:
+            print("Speak in Hindi:")
+            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            audio = self.recognizer.listen(source)
+
+        try:
+            text = self.recognizer.recognize_google(audio, language="hi-IN")
+            print("You said:", text)
+
+            # Append counter4opt to the recognized text and increment the counter
+            numbered_text2 = f"{self.MCQ_numbers[self.counter4opt]} {text}"
+            # Insert voice-recognized text without bold formatting
+            self.text_box.insert(tk.END, numbered_text2 + "    ")
+            self.recordings.append(numbered_text2)  # Save for batch saving
+
+            # Increment counter4opt and check if it reaches the end
+            self.counter4opt += 1
+            if self.counter4opt == len(self.MCQ_numbers):
+                # Start a new line and reset the counter4opt
+                self.text_box.insert(tk.END, "\n\n")
+                self.counter4opt = 0  # Reset the counter4opt to 0
+        except sr.UnknownValueError:
+            print("Google Speech Recognition could not understand audio")
+        except sr.RequestError as e:
+            print("Could not request results from Google Speech Recognition service; {0}".format(e))
+            messagebox.showerror("error", "Could not request results from Google Speech Recognition service; {0}".format(e))
+            messagebox.showinfo("Error", "Please connect your device to Internet!")
+        except Exception as e:
+            print("Error:", e)
+            messagebox.showerror("Error", e)
+        finally:
+            self.recording = False
+            self.recording_button2.config(text="Insert Options")
+            self.status_label.config(text="Ready", fg="green")
+            
+
+    def _recording_thread3(self):
+        with self.microphone as source:
+            print("Speak in Hindi:")
+            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            audio = self.recognizer.listen(source)
+
+        try:
+            text = self.recognizer.recognize_google(audio, language="hi-IN")
+            print("You said:", text)
+
+            # Insert voice-recognized text into the text box
+            self.text_box.insert(tk.END, text + "\n")
+            self.recordings.append(text)  # Save for batch saving
+        except sr.UnknownValueError:
+            print("Google Speech Recognition could not understand audio")
+        except sr.RequestError as e:
+            print("Could not request results from Google Speech Recognition service; {0}".format(e))
+            messagebox.showinfo("Error", "Please connect your device to Internet!")
+        except Exception as e:
+            print("Error:", e)
+        finally:
+            self.recording = False
+            self.recording_button3.config(text="Insert Sentence")
+            self.status_label.config(text="Ready", fg="green")
+
+    def _recording_thread4(self):
+        with self.microphone as source:
+            print("Speak in Hindi:")
+            self.recognizer.adjust_for_ambient_noise(source, duration=1)
+            audio = self.recognizer.listen(source)
+
+        try:
+            text = self.recognizer.recognize_google(audio, language="hi-IN")
+            print("You said:", text)
+
+            # Append counter2 to the recognized text
+            numbered_text4 = f"{self.roman2_numbers[self.counter4list - 1]}. {text}{self.selected_punctuation}"  # Append selected punctuation
+            self.counter4list += 1  # Increment counter2
+
+            # Insert voice-recognized text without bold formatting
+            self.text_box.insert(tk.END, numbered_text4 + "\n")
+            self.recordings.append(numbered_text4)  # Save for batch saving
+        except sr.UnknownValueError:
+            print("Google Speech Recognition could not understand audio")
+        except sr.RequestError as e:
+            print("Could not request results from Google Speech Recognition service; {0}".format(e))
+            messagebox.showinfo("Error", "Please connect your device to Internet!")
+        except Exception as e:
+            print("Error:", e)
+        finally:
+            self.recording = False
+            self.recording_button4.config(text="Insert List")
+            self.status_label.config(text="Ready", fg="green")
+
+
+    def remove_ques(self):
+        if self.counter4ques > 1:
+            # Find the start position of the last Hindi numbering
+            start_pos = self.text_box.search(f"\\({self.hindi_numbers[self.counter4ques - 2]}\\)", "1.0", stopindex=tk.END, regexp=True)
+            if start_pos:
+                # Find the end position of the last Hindi numbering
+                end_line = int(start_pos.split('.')[0]) + 1  # Get the line number of the next Hindi numbering
+                end_pos = f"{end_line}.0"  # Start of the next Hindi numbering
+                self.counter4ques -= 1
+                self.text_box.delete(start_pos, end_pos)
+
+        
+    def remove_mcq(self):
+        # Find the start position of the last MCQ numbering
+        start_pos = self.text_box.search(f"\\({self.MCQ_numbers[self.counter4opt - 1]}\\)", "1.0", stopindex=tk.END, regexp=True)
+        if start_pos:
+            # Find the end position of the last MCQ numbering
+            end_pos = self.text_box.search(f"\\({self.MCQ_numbers[self.counter4opt]}\\)", start_pos, stopindex=tk.END, regexp=True)
+            if not end_pos:
+                end_pos = self.text_box.search("\n", start_pos, stopindex=tk.END)
+            self.counter4opt -= 1
+            # Check if the start position is at the beginning of the text
+            if start_pos != "1.0":
+                start_pos += "-1c"  # Adjust the start position to include the previous character (newline)
+            self.text_box.delete(start_pos, end_pos + " lineend")
+
+
+
+    def remove_sentence(self):
+        start_pos = self.text_box.search("You said:", "1.0", stopindex=tk.END, regexp=True)
+        if start_pos:
+            end_pos = self.text_box.search("\n", start_pos, tk.END, regexp=False)
+            if end_pos:
+                self.text_box.delete(start_pos, end_pos + "+1c")
+
+    def remove_list(self):
+        if self.counter4list > 1:
+            # Find the start position of the last Hindi numbering
+            start_pos = self.text_box.search(f"\\({self.roman2_numbers[self.counter4list - 2]}\\)", "1.0", stopindex=tk.END, regexp=True)
+            if start_pos:
+                # Find the end position of the last Hindi numbering
+                end_line = int(start_pos.split('.')[0]) + 1  # Get the line number of the next Hindi numbering
+                end_pos = f"{end_line}.0"  # Start of the next Hindi numbering
+                self.counter4list -= 1
+                self.text_box.delete(start_pos, end_pos)
+ 
+
+
+
+
+
+    def save_to_docx(self):
+        if self.recordings:
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            file_path = os.path.join(current_dir, "speech_to_text.docx")
+            try:
+                doc = Document(file_path) if os.path.exists(file_path) else Document()
+                for text in self.recordings:
+                    doc.add_paragraph(text)
+                doc.save(file_path)
+                self.recordings.clear()
+            except Exception as e:
+                print("Error saving file:", e)
+
+ 
+    def save_text(self):
+        text_content = self.text_box.get("1.0", tk.END)
+        default_file_name = "My Exam Paper"  # Default file name without extension
+        file_name = simpledialog.askstring("Save As", "Enter file name (without extension):", initialvalue=default_file_name)
+        if file_name:
+            file_name += ".docx"  # Append .docx extension
+            file_path = os.path.join(os.getcwd(), file_name)
+            try:
+                doc = Document()  # Create a new Document object
+
+                # Set page size to A4
+                section = doc.sections[0]
+                section.page_height = Cm(29.7)
+                section.page_width = Cm(21.0)
+
+                # Set margins to narrow
+                section.left_margin = Inches(0.5)
+                section.right_margin = Inches(0.5)
+                section.top_margin = Inches(0.5)
+                section.bottom_margin = Inches(0.5)
+
+                # Define paragraph style with minimum spacing
+                style = doc.styles['Normal']
+                style.paragraph_format.space_before = Pt(0)
+                style.paragraph_format.space_after = Pt(0)
+
+                # Iterate over each line in the text content
+                for line in text_content.split("\n"):
+                    # Check if the line contains a predefined text
+                    predefined_text_found = False
+                    
+                    # Check in the first dictionary
+                    for predefined_text in self.predefined_texts.values():
+                        if predefined_text in line:
+                            # Apply bold formatting to the line
+                            paragraph = doc.add_paragraph()
+                            run = paragraph.add_run(line)
+                            run.font.bold = True
+                            run.font.size = Pt(12)  # Set font size to 14 points
+                            run.font.color.rgb = RGBColor(0, 0, 0)  # Set font color to black
+                            predefined_text_found = True
+                            break
+                    
+                    # If not found in the first dictionary, check in the second dictionary
+                    if not predefined_text_found:
+                        for predefined_text in self.another_predefined_texts.values():
+                            if predefined_text in line:
+                                # Apply bold formatting to the line
+                                paragraph = doc.add_paragraph()
+                                run = paragraph.add_run(line)
+                                run.font.bold = True
+                                run.font.size = Pt(12)  # Set font size to 14 points
+                                run.font.color.rgb = RGBColor(0, 0, 0)  # Set font color to black
+                                predefined_text_found = True
+                                break
+                    
+                    # If not found in the second dictionary, check in the third dictionary
+                    if not predefined_text_found:
+                        for person, person_texts in self.my_predefined_texts.items():
+                            for text_name, text_content in person_texts.items():
+                                if text_content in line:
+                                    # Apply bold formatting to the line
+                                    paragraph = doc.add_paragraph()
+                                    run = paragraph.add_run(line)
+                                    run.font.bold = True
+                                    run.font.size = Pt(12)  # Set font size to 14 points
+                                    run.font.color.rgb = RGBColor(0, 0, 0)  # Set font color to black
+                                    predefined_text_found = True
+                                    break
+                            if predefined_text_found:
+                                break
+                    
+                    if not predefined_text_found:
+                        # If the line does not contain a predefined text, add it normally
+                        paragraph = doc.add_paragraph(line, style)
+                        # Apply font type and size to the entire paragraph
+                        for run in paragraph.runs:
+                            run.font.name = "Arial"  # Set font type to Arial
+                            run.font.size = Pt(11)  # Set font size to 14 points
+
+                doc.save(file_path)  # Save the document
+                messagebox.showinfo("Success", f"Text saved successfully as '{file_name}'!")
+            except PermissionError as e:
+                messagebox.showerror("Error", f"Please close the {file_name} file before saving.")
+            except Exception as e:
+                print("Error saving file:", e)
+
+
+
+    def open_saved_file(self):
+        current_dir = os.getcwd()
+        file_path = filedialog.askopenfilename(initialdir=current_dir, title="Select file", filetypes=(("Word files", "*.docx"), ("All files", "*.*")))
+        if file_path:
+            try:
+                os.startfile(file_path)  # Open the file using default application
+            except Exception as e:
+                print("Error opening file:", e)
+
+
+
+            
+    def insert_predefined_text(self, filename=None):
+        self.counter4ques = 1 
+        self.counter = 1  # Reset the counter to 1
+        try:
+            if filename:
+                file_path = os.path.join(os.path.dirname(__file__) + "\\myText", filename)
+                print("File path:", file_path)  # Print the absolute file path for debugging
+                with open(file_path, "r", encoding="utf-8") as file:
+                    predefined_text = file.readlines()
+                    numbered_text_1 = ""
+                    for line in predefined_text:
+                        # Apply bold formatting to each line
+                        numbered_text_1 += f"\n{self.roman_numbers[self.counter2 - 1]}. {line.strip()}\n"
+                        self.counter2 += 1
+                    self.text_box.insert(tk.END, numbered_text_1)  # Insert predefined text
+                    
+                    # Apply bold formatting to the entire inserted text
+                    self.text_box.tag_configure("bold", font=("Arial", 14, "bold"))
+                    self.text_box.tag_add("bold", "end - 2 lines", "end - 1 lines")
+                    
+                    self.recordings = [numbered_text_1]  # Reset the recordings list
+        except FileNotFoundError:
+            print("Predefined text file not found.")
+
+
+    def insert_predefined_text2(self, text=None):
+        if text is None:
+            text = self.predefined_texts["Yearly exam"]  # Default to the first predefined text
+        
+        # Apply bold formatting to the predefined text
+        self.text_box.insert(tk.END, text + "\n", "predefined")  
+        self.text_box.tag_configure("predefined", font=("Arial", 14, "bold"))
+
+
+    def insert_predefined_text3(self, text=None):
+        self.counter4ques = 1 
+        self.counter = 1  # Reset the counter to 1
+        if text is None:
+            text = self.predefined_texts["Yearly exam"]  # Default to the first predefined text
+
+        # Split the text into sentences
+        sentences = text.split(". ")
+
+        # Add Roman numbering to each sentence
+        formatted_text = ""
+        for index, sentence in enumerate(sentences, start=self.counter2):
+            formatted_text += f"{self.roman_numbers[index - 1]}. {sentence} "
+
+        # Increment the counter for numbering
+        self.counter2 += len(sentences)
+
+        # Apply bold formatting to the predefined text
+        self.text_box.insert(tk.END, "\n" + formatted_text + "\n", "predefined")
+        self.text_box.tag_configure("predefined", font=("Arial", 14, "bold"))            
+            
+
+if __name__ == "__main__":
+
+    root = tk.Tk()
+    app = SpeechToTextApp(root)
+    root.mainloop()
